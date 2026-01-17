@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>田中海事 船舶追跡システム</title>
+    
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f0f0f0;
+        }
+        
+        /* パスワード入力画面 */
+        #password-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+        }
+        
+        .password-container {
+            background: white;
+            padding: 40px;
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            text-align: center;
+            max-width: 400px;
+            width: 90%;
+        }
+        
+        .password-container h2 {
+            color: #1e3c72;
+            margin-bottom: 10px;
+        }
+        
+        .password-container p {
+            color: #666;
+            margin-bottom: 30px;
+        }
+        
+        .password-container input {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px;
+            margin-bottom: 15px;
+            box-sizing: border-box;
+        }
+        
+        .password-container input:focus {
+            outline: none;
+            border-color: #2a5298;
+        }
+        
+        .password-container button {
+            width: 100%;
+            padding: 15px;
+            background: #2a5298;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        
+        .password-container button:hover {
+            background: #1e3c72;
+        }
+        
+        .password-error {
+            color: #e74c3c;
+            margin-top: 10px;
+            font-size: 14px;
+        }
+        
+        #main-content {
+            display: none;
+        }
+        
+        #header {
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: white;
+            padding: 20px;
+            text-align: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        }
+        
+        #header h1 {
+            font-size: 24px;
+            margin-bottom: 5px;
+        }
+        
+        #header p {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+        
+        #map {
+            width: 100%;
+            height: calc(100vh - 140px);
+        }
+        
+        #status {
+            background: white;
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 -2px 10px rgba(0,0,0,0.1);
+        }
+        
+        #last-update {
+            color: #666;
+            font-size: 14px;
+        }
+        
+        #vessel-count {
+            font-size: 14px;
+            color: #2a5298;
+            font-weight: bold;
+        }
+        
+        .vessel-marker {
+            position: relative;
+            width: 60px;
+            height: 80px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+        }
+        
+        .vessel-marker-badge {
+            background: white;
+            border: 3px solid #2a5298;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 14px;
+            color: #1e3c72;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.3);
+            transition: all 0.2s;
+            z-index: 2;
+            position: relative;
+        }
+        
+        .vessel-marker:hover .vessel-marker-badge {
+            transform: scale(1.1);
+            border-color: #ff6b6b;
+        }
+        
+        /* 矢印コンテナ：円の中心を基準に回転 */
+        .vessel-arrow-container {
+            position: absolute;
+            width: 60px;
+            height: 80px;
+            top: 0;
+            left: 0;
+            display: flex;
+            align-items: flex-start;
+            justify-content: center;
+            transform-origin: 30px 40px; /* 円の中心 */
+            transition: transform 0.5s ease;
+            pointer-events: none;
+        }
+        
+        .vessel-arrow {
+            margin-top: -20px; /* 円から離す */
+            width: 0;
+            height: 0;
+            border-left: 12px solid transparent;
+            border-right: 12px solid transparent;
+            border-bottom: 25px solid #27ae60;
+            filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
+            z-index: 1;
+        }
+        
+        .vessel-arrow.stopped {
+            border-bottom-color: #95a5a6;
+            opacity: 0.5;
+        }
+        
+        .leaflet-popup-content-wrapper {
+            border-radius: 8px;
+        }
+        
+        .popup-content {
+            padding: 5px;
+            min-width: 200px;
+        }
+        
+        .popup-content h3 {
+            color: #1e3c72;
+            margin-bottom: 10px;
+            border-bottom: 2px solid #2a5298;
+            padding-bottom: 5px;
+        }
+        
+        .popup-content p {
+            margin: 8px 0;
+            font-size: 14px;
+        }
+        
+        .popup-content strong {
+            color: #2a5298;
+        }
+        
+        .status-moving {
+            color: #27ae60;
+        }
+        
+        .status-stopped {
+            color: #e74c3c;
+        }
+        
+        @media (max-width: 768px) {
+            #header h1 {
+                font-size: 20px;
+            }
+            
+            #map {
+                height: calc(100vh - 120px);
+            }
+            
+            #status {
+                flex-direction: column;
+                gap: 10px;
+            }
+            
+            .password-container {
+                padding: 30px 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- パスワード入力画面 -->
+    <div id="password-screen">
+        <div class="password-container">
+            <h2>🚢 田中海事 船舶追跡システム</h2>
+            <p>アクセスするにはパスワードを入力してください</p>
+            <input type="password" id="password-input" placeholder="パスワード" />
+            <button onclick="checkPassword()">ログイン</button>
+            <div id="password-error" class="password-error"></div>
+        </div>
+    </div>
+    
+    <!-- メインコンテンツ -->
+    <div id="main-content">
+        <div id="header">
+            <h1>🚢 田中海事 船舶追跡システム</h1>
+            <p>5隻のリアルタイム位置情報</p>
+        </div>
+        
+        <div id="map"></div>
+        
+        <div id="status">
+            <div id="vessel-count">読み込み中...</div>
+            <div id="last-update">最終更新: --</div>
+        </div>
+    </div>
+    
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <script>
+        // ===== パスワード認証 =====
+        const CORRECT_PASSWORD = "tanaka2025"; // ★ここでパスワードを設定★
+        
+        // Enterキーでログイン
+        document.getElementById('password-input').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                checkPassword();
+            }
+        });
+        
+        function checkPassword() {
+            const input = document.getElementById('password-input').value;
+            const errorDiv = document.getElementById('password-error');
+            
+            if (input === CORRECT_PASSWORD) {
+                // パスワード正解
+                document.getElementById('password-screen').style.display = 'none';
+                document.getElementById('main-content').style.display = 'block';
+                
+                // セッションストレージに保存（ブラウザを閉じるまで有効）
+                sessionStorage.setItem('authenticated', 'true');
+                
+                // 地図を初期化
+                initMap();
+            } else {
+                // パスワード不正解
+                errorDiv.textContent = 'パスワードが正しくありません';
+                document.getElementById('password-input').value = '';
+                document.getElementById('password-input').focus();
+            }
+        }
+        
+        // ページ読み込み時にセッションチェック
+        window.addEventListener('load', function() {
+            if (sessionStorage.getItem('authenticated') === 'true') {
+                document.getElementById('password-screen').style.display = 'none';
+                document.getElementById('main-content').style.display = 'block';
+                initMap();
+            }
+        });
+        
+        // ===== 船舶追跡システム =====
+        let map;
+        const markers = {};
+        
+        const vessels = [
+            {
+                number: "No.5",
+                name: "第五扶桑丸",
+                nameEn: "Fusomaru",
+                channelId: 98502,
+                readKey: "b2e7475d76696f06"
+            },
+            {
+                number: "No.8",
+                name: "第八明友号",
+                nameEn: "Meiyugo",
+                channelId: 98503,
+                readKey: "eea2ec27dd956a24"
+            },
+            {
+                number: "No.28",
+                name: "第二十八明友号",
+                nameEn: "Meiyugo",
+                channelId: 98504,
+                readKey: "91f8b11e87a6daea"
+            },
+            {
+                number: "No.30",
+                name: "第三十明友号",
+                nameEn: "Meiyugo",
+                channelId: 98506,
+                readKey: "e4fdad2d5fc2893c"
+            },
+            {
+                number: "No.50",
+                name: "第五十明友号",
+                nameEn: "Meiyugo",
+                channelId: 98507,
+                readKey: "90c80ea88054a759"
+            }
+        ];
+        
+        function initMap() {
+            // 地図の初期化（高松港中心）
+            map = L.map('map').setView([34.35, 134.05], 11);
+            
+            // OpenStreetMapタイル
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors',
+                maxZoom: 18
+            }).addTo(map);
+            
+            // 初回データ取得
+            updateAllVessels();
+            
+            // 30秒ごとに更新
+            setInterval(updateAllVessels, 30000);
+            
+            console.log('田中海事 船舶追跡システム 起動完了');
+        }
+        
+        function angleToDirectionName(angle) {
+            if (angle < 0) return '停止';
+            
+            if (angle >= 348.75 || angle < 11.25) return '北';
+            else if (angle < 33.75)  return '北北東';
+            else if (angle < 56.25)  return '北東';
+            else if (angle < 78.75)  return '東北東';
+            else if (angle < 101.25) return '東';
+            else if (angle < 123.75) return '東南東';
+            else if (angle < 146.25) return '南東';
+            else if (angle < 168.75) return '南南東';
+            else if (angle < 191.25) return '南';
+            else if (angle < 213.75) return '南南西';
+            else if (angle < 236.25) return '南西';
+            else if (angle < 258.75) return '西南西';
+            else if (angle < 281.25) return '西';
+            else if (angle < 303.75) return '西北西';
+            else if (angle < 326.25) return '北西';
+            else return '北北西';
+        }
+        
+        function createVesselIcon(number, angle, speed) {
+            const isMoving = speed >= 0.5 && angle >= 0;
+            const arrowClass = isMoving ? '' : ' stopped';
+            const arrowStyle = isMoving ? `transform: rotate(${angle}deg);` : 'transform: rotate(0deg); opacity: 0.3;';
+            
+            return L.divIcon({
+                className: 'custom-div-icon',
+                html: `
+                    <div class="vessel-marker">
+                        <div class="vessel-marker-badge">${number}</div>
+                        <div class="vessel-arrow-container" style="${arrowStyle}">
+                            <div class="vessel-arrow${arrowClass}"></div>
+                        </div>
+                    </div>
+                `,
+                iconSize: [60, 80],
+                iconAnchor: [30, 40]
+            });
+        }
+        
+        function createPopupContent(vessel, data) {
+            const speed = parseFloat(data.d3) || 0;
+            const angle = parseFloat(data.d4);
+            const directionJP = angleToDirectionName(angle);
+            const isMoving = speed >= 0.5 && angle >= 0;
+            const statusClass = isMoving ? 'status-moving' : 'status-stopped';
+            const statusText = isMoving ? '航行中' : '停泊中';
+            
+            return `
+                <div class="popup-content">
+                    <h3>${vessel.number} ${vessel.name}</h3>
+                    <p><strong>状態:</strong> <span class="${statusClass}">${statusText}</span></p>
+                    <p><strong>速度:</strong> ${speed.toFixed(1)} ノット</p>
+                    <p><strong>方位:</strong> ${directionJP}${angle >= 0 ? ' (' + angle.toFixed(1) + '°)' : ''}</p>
+                    <p><strong>緯度:</strong> ${parseFloat(data.d1).toFixed(6)}</p>
+                    <p><strong>経度:</strong> ${parseFloat(data.d2).toFixed(6)}</p>
+                    <p><strong>更新:</strong> ${new Date(data.created).toLocaleString('ja-JP')}</p>
+                </div>
+            `;
+        }
+        
+        async function fetchVesselData(vessel) {
+            try {
+                const url = `https://ambidata.io/api/v2/channels/${vessel.channelId}/data?n=1&readKey=${vessel.readKey}`;
+                const response = await fetch(url);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                if (data && data.length > 0) {
+                    return data[0];
+                }
+                return null;
+            } catch (error) {
+                console.error(`Error fetching data for ${vessel.number}:`, error);
+                return null;
+            }
+        }
+        
+        function updateMarker(vessel, data) {
+            if (!data || !data.d1 || !data.d2) {
+                return;
+            }
+            
+            const lat = parseFloat(data.d1);
+            const lng = parseFloat(data.d2);
+            const speed = parseFloat(data.d3) || 0;
+            const angle = parseFloat(data.d4);
+            
+            if (isNaN(lat) || isNaN(lng)) {
+                return;
+            }
+            
+            const position = [lat, lng];
+            
+            if (markers[vessel.number]) {
+                map.removeLayer(markers[vessel.number]);
+            }
+            
+            const marker = L.marker(position, {
+                icon: createVesselIcon(vessel.number, angle, speed)
+            }).addTo(map);
+            
+            marker.bindPopup(createPopupContent(vessel, data));
+            markers[vessel.number] = marker;
+        }
+        
+        async function updateAllVessels() {
+            let activeCount = 0;
+            
+            for (const vessel of vessels) {
+                const data = await fetchVesselData(vessel);
+                if (data) {
+                    updateMarker(vessel, data);
+                    activeCount++;
+                }
+            }
+            
+            document.getElementById('vessel-count').textContent = 
+                `追跡中: ${activeCount} / ${vessels.length} 隻`;
+            document.getElementById('last-update').textContent = 
+                `最終更新: ${new Date().toLocaleTimeString('ja-JP')}`;
+        }
+    </script>
+</body>
+</html>
